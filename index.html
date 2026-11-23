@@ -1527,19 +1527,40 @@ button.known__chip:hover { border-color: var(--text-muted); }
   function plan(text) {
     var c = cities(text), via = c.length >= 3 ? c[1] : c[0], dest = c[c.length - 1];
     var hrs = /(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)\b/i.exec(text);
-    return { origin: c.length >= 3 ? c[0] : null, via: via, dest: dest, wait: hrs ? Math.round(parseFloat(hrs[1]) * 60) : null };
+    var tm = /\b(\d{1,2})[:.](\d{2})\b/.exec(text), ap = /\b(\d{1,2})\s*(am|pm)\b/i.exec(text), hh = null, mm = 0;
+    if (tm && +tm[1] < 24) { hh = +tm[1]; mm = +tm[2]; }
+    else if (ap) { hh = (+ap[1] % 12) + (/pm/i.test(ap[2]) ? 12 : 0); }
+    return { origin: c.length >= 3 ? c[0] : null, via: via, dest: dest, wait: hrs ? Math.round(parseFloat(hrs[1]) * 60) : null,
+      hh: hh, mm: mm, unknownTime: /landing time unknown/i.test(text) };
   }
   function nice(m) { var h = Math.floor(m / 60), r = m % 60; return (h ? h + ' h' : '') + (h && r ? ' ' : '') + (r ? r + ' min' : ''); }
+  function q(text, p, title, note, options, pick) {
+    var C = K.CITIES, trip = (p.origin ? C[p.origin][1] + ' → ' : '') + C[p.via][1] + ' → ' + C[p.dest][1];
+    var known = [{ text: trip }];
+    if (p.wait) known.push({ text: nice(p.wait) + ' wait in ' + C[p.via][1] });
+    return [K.cards.aiNote('Got it. I will find ' + K.esc(C[p.via][1]) + ' to ' + K.esc(C[p.dest][1]) + ' flights that leave sooner. I just need one detail first.'),
+      K.cards.question({ title: title, note: note, known: known, options: options, pickDate: pick })];
+  }
 
-  function render(text) {
-    var p = plan(text), E = K.esc, T = K.time, C = K.CITIES;
-    var via = C[p.via], dest = C[p.dest], origin = p.origin ? C[p.origin] : null;
-    var land = T.at(1, '14:05');                      // example landing time: we can't see the booking
-    var oldWait = p.wait || 480;
+  // Returns { cards, missing }. Asks one thing at a time until it knows the wait, the day and the landing time.
+  function render(text, slots) {
+    var p = plan(text), E = K.esc, T = K.time, C = K.CITIES, V = C[p.via][1];
+    if (!p.wait) return { missing: 'rebook-wait', cards: q(text, p, 'How long is the wait in ' + V + ' now?', 'Your new wait between the two flights.',
+      [['4 hours', text + ', the wait is now 4 hours'], ['6 hours', text + ', the wait is now 6 hours'], ['8 hours', text + ', the wait is now 8 hours'], ['10 hours', text + ', the wait is now 10 hours']]) };
+    var dates = slots && slots.dates;
+    if (!dates) return { missing: 'rebook-day', cards: q(text, p, 'Which day do you land in ' + V + '?', 'We use this to find flights that leave after you land.',
+      [['Today', text + ' today'], ['Tomorrow', text + ' tomorrow']], text) };
+    if (p.hh === null && !p.unknownTime) return { missing: 'rebook-time', cards: q(text, p, 'What time do you land in ' + V + '?', 'A rough time is fine. You can type an exact one below.',
+      [['Morning, 09:00', text + ' landing at 09:00'], ['Midday, 12:00', text + ' landing at 12:00'], ['Afternoon, 15:00', text + ' landing at 15:00'], ['Evening, 19:00', text + ' landing at 19:00'], ['I don\'t know', text + ' landing time unknown']]) };
+
+    var guessed = p.hh === null;
+    var land = new Date(dates.start); land.setHours(guessed ? 14 : p.hh, guessed ? 5 : p.mm, 0, 0);
+    var dest = C[p.dest], via = C[p.via], origin = p.origin ? C[p.origin] : null, oldWait = p.wait;
+    var tag = guessed ? ' (example time, we do not have yours)' : '';
     var tripNow = {
       icon: 'plane', kicker: 'Your trip now', title: (origin ? origin[1] + ' → ' : '') + via[1] + ' → ' + dest[1], half: false,
       items: [
-        origin ? [origin[1] + ' to ' + via[1], 'Lands ' + T.hm(land) + ' (example time)', K.badge('success', 'No change')] : ['Arriving in ' + via[1], 'Lands ' + T.hm(land) + ' (example time)', ''],
+        origin ? [origin[1] + ' to ' + via[1], 'Lands ' + T.hm(land) + tag, K.badge('success', 'No change')] : ['Arriving in ' + via[1], 'Lands ' + T.hm(land) + tag, ''],
         ['Wait in ' + via[1], nice(oldWait), K.badge('warning', 'Too long')],
         [via[1] + ' to ' + dest[1], 'Moved to ' + T.hm(T.addMin(land, oldWait)), K.badge('warning', 'Moved')]
       ]
@@ -1551,21 +1572,18 @@ button.known__chip:hover { border-color: var(--text-muted); }
     ];
     var base = Math.max(Math.abs(C[p.via][2] - C[p.dest][2]), 90) + 20;
     var flights = opts.filter(function (o) { return o.w < oldWait; }).map(function (o, i) {
-      var dep = T.addMin(land, o.w);
-      var f = { order: i + 1, airline: o.air, code: o.code, dep: dep, mins: base, stops: 0, price: o.price, seats: o.seats,
+      var f = { order: i + 1, airline: o.air, code: o.code, dep: T.addMin(land, o.w), mins: base, stops: 0, price: o.price, seats: o.seats,
         from: [via[0], via[1]], to: [dest[0], dest[1]], primary: i === 0,
         facts: [K.fact('clock', nice(o.w) + ' wait · saves ' + nice(oldWait - o.w))] };
       if (i === 0) f.badges = [K.badge('success', 'Shortest wait')];
       return f;
     });
-    if (!flights.length) {
-      return [K.cards.aiNote('Your wait in ' + E(via[1]) + ' is already short, so there is nothing quicker to offer. Add your booking reference and we will check it.'), K.cards.booking()];
-    }
-    return [
+    if (!flights.length) return { missing: null, cards: [K.cards.aiNote('Your wait in ' + E(via[1]) + ' is already short, so there is nothing quicker to offer. Add your booking reference and we will check it.'), K.cards.booking()] };
+    return { missing: null, cards: [
       K.cards.aiNote('Your wait in ' + E(via[1]) + ' is now ' + nice(oldWait) + '. Here are ' + E(via[1]) + ' to ' + E(dest[1]) + ' flights that leave sooner.' + (origin ? ' Your ' + E(origin[1]) + ' flight stays as it is.' : '')),
       K.cards.list(tripNow),
       K.cards.groupLabel(via[1] + ' → ' + dest[1], 'Sooner than your ' + nice(oldWait) + ' wait', null)
-    ].concat(flights.map(function (f) { return K.cards.flight(f); })).concat([K.cards.booking()]);
+    ].concat(flights.map(function (f) { return K.cards.flight(f); })).concat([K.cards.booking()]) };
   }
   window.RebookKit = { matches: matches, render: render, fix: fix, plan: plan };
 })();
@@ -1628,8 +1646,9 @@ button.known__chip:hover { border-color: var(--text-muted); }
       last = { text: text, missing: d.missing, intent: d.intent };
       if (window.RebookKit.matches(text)) {
         // Already booked and the wait got too long: offer sooner flights.
-        cards = window.RebookKit.render(text);
-        last = { text: text, missing: null, intent: 'rebook' };
+        var rb = window.RebookKit.render(text, d.slots);
+        cards = rb.cards;
+        last = { text: text, missing: rb.missing, intent: 'rebook' };
       } else if (d.intent === 'emergency' && (d.key === 'emergency' || (d.key === 'ask' && d.missing === 'to'))) {
         // Emergency: no destination needed. Show the fastest way out and let them narrow it later.
         cards = window.EmergencyKit.render(text, d.slots);
@@ -1643,7 +1662,7 @@ button.known__chip:hover { border-color: var(--text-muted); }
       canvas.innerHTML = cards.join('');
       // Every question also takes a typed answer, because the buttons can't cover every place.
       Array.prototype.forEach.call(canvas.querySelectorAll('.question'), function (q) {
-        var label = { from: 'Where are you flying from?', to: 'Where are you flying to?', date: 'Which day?' }[last.missing] || 'Where would you like to go?';
+        var label = { from: 'Where are you flying from?', to: 'Where are you flying to?', date: 'Which day?', 'rebook-wait': 'How long is the wait?', 'rebook-day': 'Which day do you land?', 'rebook-time': 'What time do you land?' }[last.missing] || 'Where would you like to go?';
         q.insertAdjacentHTML('beforeend',
           '<form class="inline-form answer-form" autocomplete="off"><label class="visually-hidden" for="answer-in">' + label + '</label>' +
           '<input class="pdg-input body" id="answer-in" placeholder="Or type it here, like Accra">' +
@@ -1676,7 +1695,7 @@ button.known__chip:hover { border-color: var(--text-muted); }
     e.preventDefault();
     var v = f.querySelector('input').value.trim();
     if (!v) return;
-    var glue = { from: last.intent === 'emergency' ? ' in ' : ' from ', to: ' to ', date: ' on ' }[last.missing];
+    var glue = { from: last.intent === 'emergency' ? ' in ' : ' from ', to: ' to ', date: ' on ', 'rebook-day': ' on ', 'rebook-time': ' landing at ', 'rebook-wait': ', the wait is now ' }[last.missing];
     var next;
     if (glue) next = last.text + glue + v;
     else next = K.findCity(v.toLowerCase()) ? 'flights to ' + v : v;
