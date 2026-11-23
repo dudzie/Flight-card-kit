@@ -1366,6 +1366,19 @@ button.known__chip:hover { border-color: var(--text-muted); }
   };
 })();
 </script>
+<style id="ek-css">
+/* Emergency trip card: only design system tokens and kit classes. */
+.ek-steps, .ek-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ek-steps p, .ek-list p { margin: 0; }
+.ek-step { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) 0; border-top: var(--border-width) solid var(--border); }
+.ek-step__body { flex: 1; min-width: 0; }
+.ek-step__time { flex: none; }
+.ek-backup { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: var(--space-4); padding: var(--space-3) 0; border-top: var(--border-width) solid var(--border); }
+.ek-list .ek-backup:first-child { border-top: 0; padding-top: 0; }
+.ek-alert { padding-top: var(--space-4); border-top: var(--border-width) solid var(--border); }
+.ek-trip .flight__bottom { padding-top: var(--space-4); }
+</style>
+
 <script id="ek-js">
 /* Emergency set (Edudzi's version). Composed only from the PDG card kit.
    Direction: answer first, proof underneath.
@@ -1427,33 +1440,58 @@ button.known__chip:hover { border-color: var(--text-muted); }
     return { o: o, you: cityName(fromK), flights: flights, cause: cause(text.toLowerCase()) };
   }
 
-  // A kit flight card. The first is the one to book. The facts carry the time budget.
-  function flightFor(p, f, i) {
-    var first = i === 0;
-    return K.cards.flight({
-      airline: f.airline, code: f.code, from: [p.o.alt[0], p.o.alt[1]], to: f.to, dep: f.dep, mins: f.mins, stops: f.stops, price: f.price,
-      primary: first, half: !first, order: i + 1,
-      badges: first
-        ? [badge('success', 'Next you can make'), badge('warning', f.seats + ' seats left')]
-        : [badge('neutral', f.seats + (f.seats >= 20 ? '+' : '') + ' seats left')],
-      facts: first
-        ? [fact('clock', 'Leave ' + esc(p.you) + ' by ' + hm(f.leaveBy)), fact('alert', 'Check-in closes ' + hm(f.checkin)), fact('car', p.o.drive + ' min drive to ' + p.o.alt[0])]
-        : [fact('clock', 'Leave by ' + hm(f.leaveBy))]
-    });
+  var ic = K.ic;
+  function arr(f) { return new Date(f.dep.getTime() + f.mins * 60000); }
+
+  // One row of the trip: icon tile, what and why, and the time it happens.
+  function step(icon, title, meta, time) {
+    return '<li class="ek-step"><span class="status__icon" aria-hidden="true">' + ic(icon) + '</span>' +
+      '<div class="ek-step__body"><p class="body strong">' + title + '</p><p class="caption muted">' + meta + '</p></div>' +
+      '<span class="body strong ek-step__time">' + time + '</span></li>';
+  }
+
+  // THE TRIP CARD: the whole answer in one place. Leave time, the drive, check-in, the flight, one action.
+  function tripCard(p) {
+    var f = p.flights[0], o = p.o, now = new Date();
+    var tight = (f.leaveBy - now) / 60000 <= 30;
+    return '<article class="pdg-card ek-trip">' +
+      '<div class="spread"><p class="caption muted">Your fastest way out</p><div class="row">' +
+        (tight ? badge('warning', 'Leave now') : badge('success', 'You can make it')) + badge('neutral', f.seats + ' seats left') + '</div></div>' +
+      '<div><h2 class="h3 pdg-card__title">Leave ' + esc(p.you) + ' by ' + hm(f.leaveBy) + '</h2>' +
+        '<p class="body muted">You would arrive at ' + hm(add(f.leaveBy, o.drive)) + ', ' + MARGIN + ' minutes before check-in closes.</p></div>' +
+      '<ol class="ek-steps" aria-label="Your next steps">' +
+        step('car', 'Drive to ' + esc(o.alt[1]) + ' (' + o.alt[0] + ')', o.drive + ' min · ' + o.miles + ' miles · ' + esc(o.roadNote), hm(f.leaveBy)) +
+        step('alert', 'Check-in closes', 'Be at the airport by ' + hm(add(f.leaveBy, o.drive)), hm(f.checkin)) +
+        step('plane', f.code + ' to ' + esc(f.to[1]), f.airline + ' · ' + (f.stops ? f.stops + ' stop' : 'Direct') + ' · Lands ' + hm(arr(f)), hm(f.dep)) +
+      '</ol>' +
+      '<div class="flight__bottom"><span class="price">£' + f.price + '<small>per person</small></span>' +
+        '<div class="pdg-card__actions" style="margin:0"><button class="pdg-btn pdg-btn--secondary body" type="button">' + ic('car') + 'Get directions</button>' +
+        '<button class="pdg-btn pdg-btn--primary body" type="button">Book ' + f.code + '</button></div></div>' +
+    '</article>';
+  }
+
+  // BACKUPS: two quiet rows, plus the alert as a small switch. No extra cards.
+  function backupCard(p) {
+    var rows = p.flights.slice(1).map(function (f) {
+      return '<li class="ek-backup"><div class="ek-step__body"><p class="body strong">' + hm(f.dep) + ' to ' + esc(f.to[1]) + '</p>' +
+        '<p class="caption muted">' + (f.stops ? f.stops + ' stop' : 'Direct') + ' · Leave by ' + hm(f.leaveBy) + '</p></div>' +
+        '<span class="body strong">£' + f.price + '</span>' +
+        '<button class="pdg-btn pdg-btn--secondary body" type="button" aria-label="Choose ' + f.code + ' to ' + esc(f.to[1]) + '">Choose</button></li>';
+    }).join('');
+    return '<article class="pdg-card ek-backups"><div><h2 class="h4 pdg-card__title">If you miss it</h2>' +
+      '<p class="caption muted">Next flights from ' + esc(p.o.alt[1]) + ' (' + p.o.alt[0] + ')</p></div>' +
+      '<ul class="ek-list">' + rows + '</ul>' +
+      '<label class="toggle ek-alert"><span class="status__body"><span class="body strong">Tell me if something changes</span>' +
+      '<span class="caption muted">We will message you if ' + esc(p.o.home[1]) + ' reopens or your flight changes.</span></span><input type="checkbox" role="switch"></label>' +
+    '</article>';
   }
 
   function render(text, slots) {
-    var p = plan(text, slots || {}), f = p.flights, o = p.o;
-    var toTxt = K.CITIES[slots.to] && slots.to !== slots.from ? ' to ' + cityName(slots.to) : '';
+    var p = plan(text, slots || {}), o = p.o;
     return [
-      K.cards.aiNote('<strong>Leave for ' + esc(o.alt[1]) + ' by ' + hm(f[0].leaveBy) + '.</strong> ' + esc(o.home[1]) + ' has stopped departures because of ' + p.cause.why + '. ' + esc(o.alt[1]) + ' is still flying, and ' + f[0].code + ' at ' + hm(f[0].dep) + ' is the next flight' + toTxt + ' you can make.'),
-      flightFor(p, f[0], 0),
-      K.cards.airport({ you: p.you, code: o.alt[0], name: o.alt[1], miles: o.miles, drive: o.drive + ' min', road: o.road, roadNote: o.roadNote }),
-      K.cards.status({ type: 'warning', icon: p.cause.icon, badge: 'Disrupted', half: true, title: esc(o.home[1]) + ' (' + o.home[0] + '): departures suspended', body: 'Because of ' + p.cause.why + '. Departures may restart late tonight, but this may change.' }),
-      K.cards.groupLabel('If you miss it', 'Next flights from ' + esc(o.alt[1]) + ' (' + o.alt[0] + ')', false),
-      flightFor(p, f[1], 1),
-      flightFor(p, f[2], 2),
-      K.cards.alert('Tell me if something changes', 'We will message you if ' + esc(o.home[1]) + ' reopens or your flight changes.')
+      K.cards.aiNote(esc(o.home[1]) + ' has stopped departures because of ' + p.cause.why + '. ' + esc(o.alt[1]) + ' is still flying, so this is the fastest way out that you can still make.'),
+      tripCard(p),
+      backupCard(p)
     ];
   }
 
