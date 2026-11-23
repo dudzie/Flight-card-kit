@@ -36,7 +36,7 @@ Use only these cards. Do not invent new ones. One card is one piece of UI.
 |---|---|---|
 | `aiNote` | One sentence that says what you understood and what you are showing. | Always first. Max 2 sentences. Plain words. |
 | `tripChips` | Shows what we understood (from, to, date, people). Each chip can be edited. | Use when we assumed something the traveller did not say. |
-| `questionCard` | Asks one thing, with tappable answers. | One question only. Never two. |
+| `questionCard` | Asks one thing, with tappable answers and a box to type your own. | One question only. Never two. The typed box is always there, because buttons can never cover every place. |
 | `suggestCard` | Offers example requests. | Use when the request is not a trip. |
 | `groupLabel` | A heading over a run of flight cards. Can offer sorting. | Max one sort control per run. |
 | `flightCard` | One flight: airline, times, duration, stops, price, facts, one action. | Only the best option gets the primary button. |
@@ -93,12 +93,22 @@ Each pattern says when it applies, what to ask or assume, and the card order.
 - **When:** One key fact is unknown and cannot be assumed safely.
 - **Cards:** `aiNote` (one short line), `questionCard`.
 - **Ask order:** For planner and spontaneous: where to, where from, when. For emergency: where they are first.
-- **Notes:** Ask one question at a time. Show what we already know as chips on the question.
+- **Notes:** Ask one question at a time. Show what we already know as plain labels on the question.
+- **Always offer a typed answer.** Buttons are shortcuts only. The traveller can type any place, and the answer joins their first request so nothing they already said is lost.
+- **Read what they typed.** Forgive common typos in place names (for example Instanbul for Istanbul).
 
-### 3.6 Change or cancel an existing booking
-- **When:** They mention a booking, a reference, "my flight", "rebook", "change".
-- **Cards:** `aiNote`, `bookingCard`, then the pattern that fits their situation (usually emergency or planner).
-- **Notes:** Never assume a booking exists. Ask for the reference without blocking the flight options.
+### 3.6 Change to a trip they already have (long layover, moved flight)
+- **When:** They already have a booking and something about it changed. Signals: layover, stopover, connection, "got moved", rescheduled, rebook, "my flight". Usually two or more places in order, such as Accra to Istanbul to London.
+- **What we read:** The places in the order they were said. With three places, the middle one is where they wait and the last one is where they are going. The wait is the number of hours they mention.
+- **Ask:** Nothing. Do not block the answer to ask for a booking reference.
+- **Cards:** `aiNote`, `listCard` ("Your trip now"), `groupLabel`, `flightCard` x up to 3, `bookingCard`.
+- **Rules:**
+  - Only show flights from the waiting city to the final place that leave sooner than the current wait. If none do, say the wait is already short and show `bookingCard` only.
+  - Sort by the shortest wait. The first one gets the primary button and a "Shortest wait" badge.
+  - Each flight shows its wait and how much time it saves.
+  - "Your trip now" lists each leg with a badge: "No change" for legs that did not move, "Too long" for the wait, "Moved" for the changed flight.
+  - We cannot see their booking. Any time we show for their landing is marked "example time" until they add a booking reference.
+  - `bookingCard` always comes last. Rebooking may cost less than a new ticket.
 
 ### 3.7 Not a trip
 - **When:** The request is not about flights, or is too vague to act on.
@@ -124,6 +134,7 @@ Each pattern says when it applies, what to ask or assume, and the card order.
 | Destination, in an emergency | Show soonest flights anywhere. |
 | Destination, spontaneous | That is the request. Show options. |
 | Origin | Use their location if given. Otherwise ask. |
+| Time they land or leave, when we cannot see their booking | Use an example time and label it "example time". |
 | Number of people | Assume 1 and show "per person" prices. Offer a chip to change it. |
 | Anything that changes safety or cost | Ask, do not assume. |
 
@@ -136,7 +147,7 @@ When you assume something, show it as an editable chip so the traveller can corr
 These apply to every pattern, at every step.
 
 1. **Never show something the traveller cannot reach.** No flight they cannot get to in time. No airport that is closed.
-2. **Never invent facts.** No made-up prices, seats, times, delays or causes of disruption. Show where each fact came from and when it was last checked. If it is unconfirmed, say so.
+2. **Never invent facts.** No made-up prices, seats, times, delays or causes of disruption. Only name a cause (wind, strike, power cut) if the traveller said it. If they did not, just say the airport has stopped departures. Show where each fact came from and when it was last checked. If it is unconfirmed, say so.
 3. **Never act without confirming.** Never book, charge or change anything without a clear confirm step that shows the total price and the conditions. If there is danger, point to emergency services first.
 
 Also:
@@ -173,3 +184,4 @@ If the request matches no pattern:
 - To add a pattern: write the signals, what to ask or assume, the card order and the rules, in the same shape as section 3. Test it with at least 3 real prompts, including one that should not match.
 - To add a card: design it in the kit first, with its job and where it may be used. Then add it to section 2.
 - Review the "Never" rules whenever a pattern is added.
+- Places we know are listed in the code. If a traveller names a place we do not know, ask them to type it again or pick a nearby one. Do not guess.
