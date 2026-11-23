@@ -1366,44 +1366,26 @@ button.known__chip:hover { border-color: var(--text-muted); }
   };
 })();
 </script>
-<style id="ek-css">
-/* Emergency kit (Edudzi's version). Built only from design system tokens and classes. */
-.ek-hero { gap: var(--space-4); }
-.ek-hero__top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
-.ek-hero p { margin: 0; }
-.ek-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
-@media (min-width: 720px) { .ek-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-.ek-steps li { display: flex; flex-direction: column; gap: var(--space-1); padding-top: var(--space-3); border-top: var(--border-width) solid var(--border); }
-.ek-steps__label { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text-muted); }
-.ek-flight { display: flex; flex-direction: column; gap: var(--space-1); padding-top: var(--space-4); border-top: var(--border-width) solid var(--border); }
-.ek-flight p { margin: 0; }
-.ek-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.ek-rows li { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--space-2) var(--space-4); padding: var(--space-3) 0; border-top: var(--border-width) solid var(--border); }
-.ek-rows li:first-child { border-top: 0; padding-top: 0; }
-.ek-rows__main { display: flex; flex-direction: column; min-width: 0; }
-.ek-rows__side { display: flex; align-items: center; gap: var(--space-3); }
-.ek-strip p { margin: 0; }
-</style>
-
 <script id="ek-js">
-/* Emergency kit: window.EmergencyKit.render(text, slots) returns an array of card HTML.
-   Idea: answer first. One recommended route (airport + flight + time budget), then backups, then context. */
+/* Emergency set (Edudzi's version). Composed only from the PDG card kit.
+   Direction: answer first, proof underneath.
+   1 AI note with the decision, 2 the flight to book, 3 airport + disruption, 4 backups, 5 alert. */
 (function () {
   var K = window.PDGKit;
   if (!K) return;
-  var ic = K.ic, esc = K.esc, badge = K.badge;
+  var badge = K.badge, fact = K.fact, esc = K.esc;
   // Let the parser understand the brief's own example city.
   if (!K.CITIES.milan) K.CITIES.milan = ['MXP', 'Milan', 100];
 
   var CHECKIN_CLOSES = 45, MARGIN = 10; // minutes before departure
   var ORIGINS = {
-    milan:      { home: ['MXP', 'Milan Malpensa'], alt: ['BGY', 'Bergamo'], miles: 31, drive: 50 },
-    edinburgh:  { home: ['EDI', 'Edinburgh Airport'], alt: ['GLA', 'Glasgow'], miles: 47, drive: 70 },
-    glasgow:    { home: ['GLA', 'Glasgow Airport'], alt: ['EDI', 'Edinburgh'], miles: 47, drive: 70 },
-    manchester: { home: ['MAN', 'Manchester Airport'], alt: ['LPL', 'Liverpool'], miles: 35, drive: 50 },
-    london:     { home: ['LHR', 'London Heathrow'], alt: ['LGW', 'London Gatwick'], miles: 40, drive: 55 },
-    paris:      { home: ['CDG', 'Paris Charles de Gaulle'], alt: ['ORY', 'Paris Orly'], miles: 35, drive: 55 },
-    amsterdam:  { home: ['AMS', 'Amsterdam Schiphol'], alt: ['RTM', 'Rotterdam'], miles: 40, drive: 50 }
+    milan:      { home: ['MXP', 'Milan Malpensa'], alt: ['BGY', 'Bergamo'], miles: 31, drive: 50, road: 'A4', roadNote: 'A4 open' },
+    edinburgh:  { home: ['EDI', 'Edinburgh Airport'], alt: ['GLA', 'Glasgow'], miles: 47, drive: 70, road: 'M8', roadNote: 'M8 open' },
+    glasgow:    { home: ['GLA', 'Glasgow Airport'], alt: ['EDI', 'Edinburgh'], miles: 47, drive: 70, road: 'M8', roadNote: 'M8 open' },
+    manchester: { home: ['MAN', 'Manchester Airport'], alt: ['LPL', 'Liverpool'], miles: 35, drive: 50, road: 'M62', roadNote: 'M62 open' },
+    london:     { home: ['LHR', 'London Heathrow'], alt: ['LGW', 'London Gatwick'], miles: 40, drive: 55, road: 'M25', roadNote: 'M25 open' },
+    paris:      { home: ['CDG', 'Paris Charles de Gaulle'], alt: ['ORY', 'Paris Orly'], miles: 35, drive: 55, road: 'A6', roadNote: 'A6 open' },
+    amsterdam:  { home: ['AMS', 'Amsterdam Schiphol'], alt: ['RTM', 'Rotterdam'], miles: 40, drive: 50, road: 'A4', roadNote: 'A4 open' }
   };
   var DEFAULT_DESTS = ['london', 'paris', 'amsterdam', 'dublin', 'rome', 'berlin'];
 
@@ -1412,20 +1394,19 @@ button.known__chip:hover { border-color: var(--text-muted); }
   function add(t, m) { return new Date(t.getTime() + m * 60000); }
   function hm(t) { return K.time.hm(t); }
   function mins(a, b) { return Math.max(Math.abs(K.CITIES[a][2] - K.CITIES[b][2]), 50) + 20; }
-  function left(t, now) { var m = Math.round((t - now) / 60000); return m <= 0 ? 'now' : m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60 ? (m % 60) + ' min' : ''); }
 
   function cause(t) {
-    if (/\b(power cut|power failure|outage|blackout)\b/.test(t)) return 'a power cut';
-    if (/\b(fire|evacuat\w*)\b/.test(t)) return 'an evacuation';
-    if (/\bstrike\b/.test(t)) return 'a strike';
-    if (/\b(fog|snow)\b/.test(t)) return 'low visibility';
-    return 'strong winds';
+    if (/\b(power cut|power failure|outage|blackout)\b/.test(t)) return { why: 'a power cut', icon: 'zap' };
+    if (/\b(fire|evacuat\w*)\b/.test(t)) return { why: 'an evacuation', icon: 'alert' };
+    if (/\bstrike\b/.test(t)) return { why: 'a strike', icon: 'alert' };
+    if (/\b(fog|snow)\b/.test(t)) return { why: 'low visibility', icon: 'wind' };
+    return { why: 'strong winds', icon: 'wind' };
   }
 
+  // Works out the airport, the flights and the time budget for each.
   function plan(text, sl) {
-    var now = new Date();
-    var fromK = sl.from;
-    var o = ORIGINS[fromK] || { home: [(K.CITIES[fromK] || ['---'])[0], cityName(fromK) + ' airport'], alt: ['ALT', 'the nearest open airport'], miles: 40, drive: 55 };
+    var now = new Date(), fromK = sl.from;
+    var o = ORIGINS[fromK] || { home: [(K.CITIES[fromK] || ['---'])[0], cityName(fromK) + ' airport'], alt: ['ALT', 'the nearest open airport'], miles: 40, drive: 55, road: 'the main road', roadNote: 'Main road open' };
     var dests = (K.CITIES[sl.to] && sl.to !== fromK)
       ? [sl.to, sl.to, sl.to]
       : DEFAULT_DESTS.filter(function (k) { return k !== fromK && K.CITIES[k]; }).slice(0, 3);
@@ -1438,82 +1419,43 @@ button.known__chip:hover { border-color: var(--text-muted); }
     ];
     var flights = base.map(function (b, i) {
       var dk = dests[i], m = mins(fromK, dk) + (b.stops ? 85 : 0);
-      var f = { airline: b.airline, code: b.code, stops: b.stops, price: b.price, seats: b.seats,
-        toK: dk, to: [K.CITIES[dk][0], K.CITIES[dk][1]], dep: deps[i], mins: m };
-      f.arr = add(f.dep, m);
+      var f = { airline: b.airline, code: b.code, stops: b.stops, price: b.price, seats: b.seats, to: [K.CITIES[dk][0], K.CITIES[dk][1]], dep: deps[i], mins: m };
       f.leaveBy = add(f.dep, -(CHECKIN_CLOSES + MARGIN + o.drive));
-      f.atAirport = add(f.leaveBy, o.drive);
       f.checkin = add(f.dep, -CHECKIN_CLOSES);
       return f;
     });
-    return { now: now, o: o, you: cityName(fromK), flights: flights, cause: cause(text.toLowerCase()) };
+    return { o: o, you: cityName(fromK), flights: flights, cause: cause(text.toLowerCase()) };
   }
 
-  function step(icon, time, label) {
-    return '<li><span class="h4">' + hm(time) + '</span><span class="caption ek-steps__label">' + ic(icon) + label + '</span></li>';
-  }
-
-  function heroCard(p) {
-    var f = p.flights[0], o = p.o;
-    var slack = Math.round((f.leaveBy - p.now) / 60000);
-    var status = slack <= 30 ? badge('warning', 'Leave now') : badge('success', 'You can make it');
-    return '<article class="pdg-card ek-hero" data-ek-leave="' + f.leaveBy.getTime() + '">' +
-      '<div class="ek-hero__top"><p class="caption muted">Fastest way out</p>' + status + '</div>' +
-      '<div><p class="caption muted">Leave ' + esc(p.you) + ' by</p><p class="h1">' + hm(f.leaveBy) + '</p>' +
-        '<p class="body muted">That is in <span data-ek-count>' + left(f.leaveBy, p.now) + '</span>. ' + o.drive + ' min drive to ' + esc(o.alt[1]) + ' (' + o.alt[0] + ').</p></div>' +
-      '<ol class="ek-steps" aria-label="Your next steps">' +
-        step('car', f.leaveBy, 'Leave ' + esc(p.you)) +
-        step('pin', f.atAirport, 'Arrive at ' + o.alt[0]) +
-        step('clock', f.checkin, 'Check-in closes') +
-        step('plane', f.dep, 'Flight departs') +
-      '</ol>' +
-      '<div class="ek-flight"><p class="h4">' + f.code + ' to ' + esc(f.to[1]) + '</p>' +
-        '<p class="caption muted">' + f.airline + ' · ' + (f.stops ? f.stops + ' stop' : 'Direct') + ' · Lands ' + hm(f.arr) + ' · £' + f.price + '</p>' +
-        '<div class="row">' + badge('warning', f.seats + ' seats left') + '</div></div>' +
-      '<div class="pdg-card__actions">' +
-        '<button class="pdg-btn pdg-btn--primary body" type="button">Book ' + f.code + ' for £' + f.price + '</button>' +
-        '<button class="pdg-btn pdg-btn--secondary body" type="button">' + ic('car') + 'Get directions</button></div>' +
-    '</article>';
-  }
-
-  function backupCard(p) {
-    var rows = p.flights.slice(1).map(function (f) {
-      return '<li><div class="ek-rows__main"><span class="body strong">' + hm(f.dep) + ' to ' + esc(f.to[1]) + '</span>' +
-        '<span class="caption muted">' + (f.stops ? f.stops + ' stop' : 'Direct') + ' · Leave by ' + hm(f.leaveBy) + ' · ' + f.seats + (f.seats >= 20 ? '+' : '') + ' seats left</span></div>' +
-        '<div class="ek-rows__side"><span class="body strong">£' + f.price + '</span>' +
-        '<button class="pdg-btn pdg-btn--secondary body" type="button" aria-label="Choose ' + f.code + ' to ' + esc(f.to[1]) + '">Choose</button></div></li>';
-    }).join('');
-    return '<article class="pdg-card"><div><h3 class="h4 pdg-card__title">If you miss it</h3>' +
-      '<p class="caption muted">Next flights from ' + esc(p.o.alt[1]) + ' (' + p.o.alt[0] + ')</p></div><ul class="ek-rows">' + rows + '</ul></article>';
-  }
-
-  function disruptionCard(p) {
-    return '<article class="pdg-card half ek-strip"><div class="row">' + badge('warning', 'Disrupted') + '</div>' +
-      '<h3 class="h4 pdg-card__title">' + esc(p.o.home[1]) + ' (' + p.o.home[0] + '): departures suspended</h3>' +
-      '<p class="caption muted">Because of ' + p.cause + '. Departures may restart late tonight, but this can change. ' + esc(p.o.alt[1]) + ' is still flying.</p></article>';
+  // A kit flight card. The first is the one to book. The facts carry the time budget.
+  function flightFor(p, f, i) {
+    var first = i === 0;
+    return K.cards.flight({
+      airline: f.airline, code: f.code, from: [p.o.alt[0], p.o.alt[1]], to: f.to, dep: f.dep, mins: f.mins, stops: f.stops, price: f.price,
+      primary: first, half: !first, order: i + 1,
+      badges: first
+        ? [badge('success', 'Next you can make'), badge('warning', f.seats + ' seats left')]
+        : [badge('neutral', f.seats + (f.seats >= 20 ? '+' : '') + ' seats left')],
+      facts: first
+        ? [fact('clock', 'Leave ' + esc(p.you) + ' by ' + hm(f.leaveBy)), fact('alert', 'Check-in closes ' + hm(f.checkin)), fact('car', p.o.drive + ' min drive to ' + p.o.alt[0])]
+        : [fact('clock', 'Leave by ' + hm(f.leaveBy))]
+    });
   }
 
   function render(text, slots) {
-    var p = plan(text, slots || {});
+    var p = plan(text, slots || {}), f = p.flights, o = p.o;
     var toTxt = K.CITIES[slots.to] && slots.to !== slots.from ? ' to ' + cityName(slots.to) : '';
     return [
-      K.cards.aiNote(esc(p.o.home[1]) + ' has stopped departures because of ' + p.cause + '. ' + esc(p.o.alt[1]) + ' is still flying, so here is the fastest way out' + toTxt + ' that you can still make.'),
-      heroCard(p),
-      backupCard(p),
-      disruptionCard(p),
-      K.cards.alert('Tell me if something changes', 'We will message you if ' + esc(p.o.home[1]) + ' reopens or your flight changes.').replace('class="pdg-card"', 'class="pdg-card half"')
+      K.cards.aiNote('<strong>Leave for ' + esc(o.alt[1]) + ' by ' + hm(f[0].leaveBy) + '.</strong> ' + esc(o.home[1]) + ' has stopped departures because of ' + p.cause.why + '. ' + esc(o.alt[1]) + ' is still flying, and ' + f[0].code + ' at ' + hm(f[0].dep) + ' is the next flight' + toTxt + ' you can make.'),
+      flightFor(p, f[0], 0),
+      K.cards.airport({ you: p.you, code: o.alt[0], name: o.alt[1], miles: o.miles, drive: o.drive + ' min', road: o.road, roadNote: o.roadNote }),
+      K.cards.status({ type: 'warning', icon: p.cause.icon, badge: 'Disrupted', half: true, title: esc(o.home[1]) + ' (' + o.home[0] + '): departures suspended', body: 'Because of ' + p.cause.why + '. Departures may restart late tonight, but this may change.' }),
+      K.cards.groupLabel('If you miss it', 'Next flights from ' + esc(o.alt[1]) + ' (' + o.alt[0] + ')', false),
+      flightFor(p, f[1], 1),
+      flightFor(p, f[2], 2),
+      K.cards.alert('Tell me if something changes', 'We will message you if ' + esc(o.home[1]) + ' reopens or your flight changes.')
     ];
   }
-
-  // Keep the countdown honest while the page is open.
-  function tick() {
-    var now = Date.now();
-    Array.prototype.forEach.call(document.querySelectorAll('[data-ek-leave]'), function (el) {
-      var out = el.querySelector('[data-ek-count]');
-      if (out) out.textContent = left(new Date(+el.getAttribute('data-ek-leave')), new Date(now));
-    });
-  }
-  setInterval(tick, 30000);
 
   window.EmergencyKit = { render: render, plan: plan };
 })();
