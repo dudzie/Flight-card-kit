@@ -1549,14 +1549,17 @@ button.known__chip:hover { border-color: var(--text-muted); }
     results.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     timer = setTimeout(function () {
+      // The rules decide. K.route reads the request and picks one rule (see rules.md).
       var d = K.route(text), cards;
-      if (d.intent === 'emergency' && d.key === 'emergency' || (d.intent === 'emergency' && d.key === 'ask' && d.missing === 'to')) {
+      if (d.intent === 'emergency' && (d.key === 'emergency' || (d.key === 'ask' && d.missing === 'to'))) {
         // Emergency: no destination needed. Show the fastest way out and let them narrow it later.
         cards = window.EmergencyKit.render(text, d.slots);
-      } else if (d.intent === 'emergency') {
-        cards = K.render(text).html;
       } else {
-        cards = baselineCards(text);
+        // Every other case (emergency with nothing working, spontaneous, simple search, one question, unknown)
+        cards = K.render(text).html
+          .filter(function (h) { return h.indexOf('class="trip"') === -1; })
+          // Editing chips need the lab's conversation, so show them as plain labels here.
+          .map(function (h) { return h.replace(/<button type="button" class="known__chip"[^>]*>([\s\S]*?)<\/button>/g, '<span class="known__chip">$1</span>'); });
       }
       canvas.innerHTML = cards.join('');
       Array.prototype.forEach.call(canvas.children, function (el, i) {
@@ -1578,6 +1581,13 @@ button.known__chip:hover { border-color: var(--text-muted); }
     e.preventDefault();
     var text = input.value.trim();
     if (text) run(text);
+  });
+  // Tapping an answer or an example runs it as the next request.
+  canvas.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-run]');
+    if (!b) return;
+    input.value = b.getAttribute('data-run'); grow();
+    run(input.value.trim());
   });
   canvas.addEventListener('change', function (e) {
     if (e.target.classList.contains('sort-select')) K.sortRun(e.target);
