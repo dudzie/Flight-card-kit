@@ -1413,7 +1413,8 @@ button.known__chip:hover { border-color: var(--text-muted); }
     if (/\b(fire|evacuat\w*)\b/.test(t)) return { why: 'an evacuation', icon: 'alert' };
     if (/\bstrike\b/.test(t)) return { why: 'a strike', icon: 'alert' };
     if (/\b(fog|snow)\b/.test(t)) return { why: 'low visibility', icon: 'wind' };
-    return { why: 'strong winds', icon: 'wind' };
+    if (/\b(storm|windstorm|wind|gale)\b/.test(t)) return { why: 'strong winds', icon: 'wind' };
+    return { why: null, icon: 'alert' };
   }
 
   // Works out the airport, the flights and the time budget for each.
@@ -1489,13 +1490,84 @@ button.known__chip:hover { border-color: var(--text-muted); }
   function render(text, slots) {
     var p = plan(text, slots || {}), o = p.o;
     return [
-      K.cards.aiNote(esc(o.home[1]) + ' has stopped departures because of ' + p.cause.why + '. ' + esc(o.alt[1]) + ' is still flying, so this is the fastest way out that you can still make.'),
+      K.cards.aiNote(esc(o.home[1]) + ' has stopped departures' + (p.cause.why ? ' because of ' + p.cause.why : '') + '. ' + esc(o.alt[1]) + ' is still flying, so this is the fastest way out that you can still make.'),
       tripCard(p),
       backupCard(p)
     ];
   }
 
   window.EmergencyKit = { render: render, plan: plan };
+})();
+</script>
+
+<script id="rb-js">
+/* Connection change: the traveller already has a trip and the wait between flights got too long.
+   Pattern 3.6 in rules.md. Also adds more places and forgives common typos. */
+(function () {
+  var K = window.PDGKit;
+  var MORE = { accra: ['ACC', 'Accra', 400], istanbul: ['IST', 'Istanbul', 225], lagos: ['LOS', 'Lagos', 380], nairobi: ['NBO', 'Nairobi', 500],
+    dubai: ['DXB', 'Dubai', 410], doha: ['DOH', 'Doha', 370], cairo: ['CAI', 'Cairo', 300], johannesburg: ['JNB', 'Johannesburg', 680],
+    toronto: ['YYZ', 'Toronto', 500], 'los angeles': ['LAX', 'Los Angeles', 640], mumbai: ['BOM', 'Mumbai', 540], tokyo: ['HND', 'Tokyo', 710],
+    frankfurt: ['FRA', 'Frankfurt', 100], brussels: ['BRU', 'Brussels', 60], zurich: ['ZRH', 'Zurich', 105], vienna: ['VIE', 'Vienna', 130],
+    copenhagen: ['CPH', 'Copenhagen', 105], stockholm: ['ARN', 'Stockholm', 150], prague: ['PRG', 'Prague', 120], warsaw: ['WAW', 'Warsaw', 140], 'addis ababa': ['ADD', 'Addis Ababa', 450], casablanca: ['CMN', 'Casablanca', 220] };
+  Object.keys(MORE).forEach(function (k) { if (!K.CITIES[k]) K.CITIES[k] = MORE[k]; });
+
+  var TYPOS = [[/\b(instanbul|istambul|instambul|istanbull|istnbul)\b/g, 'istanbul'], [/\b(acra|akra|acrra)\b/g, 'accra'], [/\b(londn|lonodn|londen)\b/g, 'london'], [/\b(manchster|mancherster)\b/g, 'manchester']];
+  function fix(text) { var t = text; TYPOS.forEach(function (x) { t = t.replace(x[0], x[1]); }); return t; }
+
+  var LAYOVER = /\b(layovers?|stopovers?|connection time|connecting flight|wait between)\b/i;
+  function cities(t) {
+    var t2 = t.toLowerCase(), hits = [];
+    Object.keys(K.CITIES).forEach(function (k) { var m = new RegExp('\\b' + k + '\\b').exec(t2); if (m) hits.push([m.index, k]); });
+    hits.sort(function (a, b) { return a[0] - b[0]; });
+    return hits.map(function (h) { return h[1]; });
+  }
+  function matches(text) { return LAYOVER.test(text) && cities(text).length >= 2; }
+
+  function plan(text) {
+    var c = cities(text), via = c.length >= 3 ? c[1] : c[0], dest = c[c.length - 1];
+    var hrs = /(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)\b/i.exec(text);
+    return { origin: c.length >= 3 ? c[0] : null, via: via, dest: dest, wait: hrs ? Math.round(parseFloat(hrs[1]) * 60) : null };
+  }
+  function nice(m) { var h = Math.floor(m / 60), r = m % 60; return (h ? h + ' h' : '') + (h && r ? ' ' : '') + (r ? r + ' min' : ''); }
+
+  function render(text) {
+    var p = plan(text), E = K.esc, T = K.time, C = K.CITIES;
+    var via = C[p.via], dest = C[p.dest], origin = p.origin ? C[p.origin] : null;
+    var land = T.at(1, '14:05');                      // example landing time: we can't see the booking
+    var oldWait = p.wait || 480;
+    var tripNow = {
+      icon: 'plane', kicker: 'Your trip now', title: (origin ? origin[1] + ' → ' : '') + via[1] + ' → ' + dest[1], half: false,
+      items: [
+        origin ? [origin[1] + ' to ' + via[1], 'Lands ' + T.hm(land) + ' (example time)', K.badge('success', 'No change')] : ['Arriving in ' + via[1], 'Lands ' + T.hm(land) + ' (example time)', ''],
+        ['Wait in ' + via[1], nice(oldWait), K.badge('warning', 'Too long')],
+        [via[1] + ' to ' + dest[1], 'Moved to ' + T.hm(T.addMin(land, oldWait)), K.badge('warning', 'Moved')]
+      ]
+    };
+    var opts = [
+      { w: 110, air: 'Northline', code: 'NL 715', price: 168, seats: 6 },
+      { w: 205, air: 'Skylark Air', code: 'SK 482', price: 139, seats: 14 },
+      { w: 320, air: 'Coastal Jet', code: 'CJ 228', price: 112, seats: 22 }
+    ];
+    var base = Math.max(Math.abs(C[p.via][2] - C[p.dest][2]), 90) + 20;
+    var flights = opts.filter(function (o) { return o.w < oldWait; }).map(function (o, i) {
+      var dep = T.addMin(land, o.w);
+      var f = { order: i + 1, airline: o.air, code: o.code, dep: dep, mins: base, stops: 0, price: o.price, seats: o.seats,
+        from: [via[0], via[1]], to: [dest[0], dest[1]], primary: i === 0,
+        facts: [K.fact('clock', nice(o.w) + ' wait · saves ' + nice(oldWait - o.w))] };
+      if (i === 0) f.badges = [K.badge('success', 'Shortest wait')];
+      return f;
+    });
+    if (!flights.length) {
+      return [K.cards.aiNote('Your wait in ' + E(via[1]) + ' is already short, so there is nothing quicker to offer. Add your booking reference and we will check it.'), K.cards.booking()];
+    }
+    return [
+      K.cards.aiNote('Your wait in ' + E(via[1]) + ' is now ' + nice(oldWait) + '. Here are ' + E(via[1]) + ' to ' + E(dest[1]) + ' flights that leave sooner.' + (origin ? ' Your ' + E(origin[1]) + ' flight stays as it is.' : '')),
+      K.cards.list(tripNow),
+      K.cards.groupLabel(via[1] + ' → ' + dest[1], 'Sooner than your ' + nice(oldWait) + ' wait', null)
+    ].concat(flights.map(function (f) { return K.cards.flight(f); })).concat([K.cards.booking()]);
+  }
+  window.RebookKit = { matches: matches, render: render, fix: fix, plan: plan };
 })();
 </script>
 
@@ -1538,7 +1610,9 @@ button.known__chip:hover { border-color: var(--text-muted); }
     return html.filter(function (h) { return h.indexOf('class="trip"') === -1; });
   }
 
+  var last = { text: '', missing: null, intent: null };
   function run(text) {
+    text = window.RebookKit.fix(text);
     clearTimeout(timer);
     showQuery(text);
     reset.hidden = false;
@@ -1551,7 +1625,12 @@ button.known__chip:hover { border-color: var(--text-muted); }
     timer = setTimeout(function () {
       // The rules decide. K.route reads the request and picks one rule (see rules.md).
       var d = K.route(text), cards;
-      if (d.intent === 'emergency' && (d.key === 'emergency' || (d.key === 'ask' && d.missing === 'to'))) {
+      last = { text: text, missing: d.missing, intent: d.intent };
+      if (window.RebookKit.matches(text)) {
+        // Already booked and the wait got too long: offer sooner flights.
+        cards = window.RebookKit.render(text);
+        last = { text: text, missing: null, intent: 'rebook' };
+      } else if (d.intent === 'emergency' && (d.key === 'emergency' || (d.key === 'ask' && d.missing === 'to'))) {
         // Emergency: no destination needed. Show the fastest way out and let them narrow it later.
         cards = window.EmergencyKit.render(text, d.slots);
       } else {
@@ -1562,6 +1641,14 @@ button.known__chip:hover { border-color: var(--text-muted); }
           .map(function (h) { return h.replace(/<button type="button" class="known__chip"[^>]*>([\s\S]*?)<\/button>/g, '<span class="known__chip">$1</span>'); });
       }
       canvas.innerHTML = cards.join('');
+      // Every question also takes a typed answer, because the buttons can't cover every place.
+      Array.prototype.forEach.call(canvas.querySelectorAll('.question'), function (q) {
+        var label = { from: 'Where are you flying from?', to: 'Where are you flying to?', date: 'Which day?' }[last.missing] || 'Where would you like to go?';
+        q.insertAdjacentHTML('beforeend',
+          '<form class="inline-form answer-form" autocomplete="off"><label class="visually-hidden" for="answer-in">' + label + '</label>' +
+          '<input class="pdg-input body" id="answer-in" placeholder="Or type it here, like Accra">' +
+          '<button class="pdg-btn pdg-btn--secondary body" type="submit">Send</button></form>');
+      });
       Array.prototype.forEach.call(canvas.children, function (el, i) {
         el.classList.add('card-in');
         el.style.animationDelay = (i * 60) + 'ms';
@@ -1581,6 +1668,20 @@ button.known__chip:hover { border-color: var(--text-muted); }
     e.preventDefault();
     var text = input.value.trim();
     if (text) run(text);
+  });
+  // A typed answer joins the first request, so nothing the traveller already said is lost.
+  canvas.addEventListener('submit', function (e) {
+    var f = e.target.closest && e.target.closest('.answer-form');
+    if (!f) return;
+    e.preventDefault();
+    var v = f.querySelector('input').value.trim();
+    if (!v) return;
+    var glue = { from: last.intent === 'emergency' ? ' in ' : ' from ', to: ' to ', date: ' on ' }[last.missing];
+    var next;
+    if (glue) next = last.text + glue + v;
+    else next = K.findCity(v.toLowerCase()) ? 'flights to ' + v : v;
+    input.value = next; grow();
+    run(next);
   });
   // Tapping an answer or an example runs it as the next request.
   canvas.addEventListener('click', function (e) {
